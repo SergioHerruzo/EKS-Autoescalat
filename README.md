@@ -13,7 +13,7 @@ El projecte està organitzat en mòduls locals per a una millor mantenibilitat:
 ## Estructura del Projecte
 
 ```text
-eks/
+   
 ├── terraform/
 │   ├── main.tf              # Orquestrador de mòduls
 │   ├── providers.tf         # Configuració de providers (AWS, Helm, Kubernetes)
@@ -51,14 +51,49 @@ Aquest projecte inclou correccions crítiques per superar les restriccions d'IAM
    aws eks update-kubeconfig --region us-east-1 --name karpenter-challenge-35
    ```
 
-## Verificació de Karpenter
+## Proves d'Autoscaling amb Karpenter
 
-Un cop el clúster estigui llest, pots desplegar l'aplicació de prova i el `NodePool` per veure com Karpenter llança nous nodes automàticament:
+Un cop el clúster estigui llest, pots analitzar com reacciona Karpenter davant l'augment o disminució de demanda de recursos:
 
-```bash
-kubectl apply -f ../kubernetes/nodepool.yaml
-kubectl apply -f ../kubernetes/test-app.yaml
-```
+1. **Desplegar els recursos inicials**:
+   Aplica el manifest `nodepool.yaml` (la configuració de Karpenter sobre com crear nodes) i l'aplicació de prova `test-app.yaml`.
+   ```bash
+   kubectl apply -f ../kubernetes/nodepool.yaml
+   kubectl apply -f ../kubernetes/test-app.yaml
+   ```
+
+2. **Prova de Càrrega Automàtica (Scale-Up)**:
+   Pots utilitzar l'script de bash inclòs per desencadenar un esdeveniment d'escala automàtic i observar com reacciona Karpenter ràpidament. L'script configurarà 15 rèpliques i començarà a observar els canvis:
+   ```bash
+   cd ..
+   chmod +x load-test.sh
+   ./load-test.sh
+   ```
+
+3. **Prova Manual Pas a Pas (Opcional)**:
+   Si vols dur a terme la prova manual per poder veure millor la reacció:
+   
+   - Escala un "load-generator" perquè hi hagi "pods pending" a l'espera de mes CPU i RAM:
+     ```bash
+     kubectl scale deployment load-generator --replicas=15
+     ```
+   
+   - Vigila la creació de nous nodes de EC2 per part de Karpenter:
+     ```bash
+     kubectl get nodes -w
+     ```
+   
+   - Analitza els logs del controlador de Karpenter per revisar les seves decisions d'aprovisionament:
+     ```bash
+     kubectl logs -f -n karpenter -l app.kubernetes.io/name=karpenter
+     ```
+
+4. **Prova de Consolidació (Scale-Down)**:
+   Per verificar que Karpenter elimina els nodes innecessaris per estalviar costos, redueix les rèpliques a 1:
+   ```bash
+   kubectl scale deployment load-generator --replicas=1
+   ```
+   *Karpenter detectarà que els nodes estan infrautilitzats (consolidació), mourà els pods si cal, i terminarà les instàncies EC2 buides automàticament.*
 
 ---
-*Creat com a part del repte d'infraestructura cloud.*
+*Creat com a part del repte d'infraestructura cloud per a AWS Academy.*
