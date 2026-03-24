@@ -13,7 +13,6 @@ El projecte està organitzat en mòduls locals per a una millor mantenibilitat:
 ## Estructura del Projecte
 
 ```text
-   
 ├── terraform/
 │   ├── main.tf              # Orquestrador de mòduls
 │   ├── providers.tf         # Configuració de providers (AWS, Helm, Kubernetes)
@@ -27,11 +26,14 @@ El projecte està organitzat en mòduls locals per a una millor mantenibilitat:
 
 ## Adaptacions per a AWS Academy
 
-Aquest projecte inclou correccions crítiques per superar les restriccions d'IAM de l'entorn de l'Academy:
+Aquest projecte inclou correccions crítiques per superar les restriccions d'IAM i de temps de l'entorn de l'Academy:
 
 - **LabRole**: S'utilitza el rol preexistent `LabRole` per a totes les operacions (clúster i nodes), ja que no es poden crear rols nous.
-- **KMS**: S'ha desactivat la creació de claus KMS personalitzades.
-- **Access Entries**: S'utilitza el nou sistema de permisos d'EKS v20 per garantir l'accés admin a l'usuari del laboratori.
+- **KMS**: S'ha desactivat la creació de claus KMS personalitzades per evitar errors de permisos.
+- **Access Entries**: S'utilitza el sistema de permisos d'EKS v20 per garantir l'accés d'administrador a l'usuari del laboratori.
+- **Karpenter Helm Release**: 
+  - S'ha configurat amb `wait = false` i un `timeout = 1200`. Això és vital per evitar l'error `context deadline exceeded` que sol ocórrer quan el controlador triga a estabilitzar-se en entorns compartits.
+  - S'utilitza `LabInstanceProfile` per als nodes creats per Karpenter.
 
 ## Com Començar
 
@@ -62,38 +64,33 @@ Un cop el clúster estigui llest, pots analitzar com reacciona Karpenter davant 
    kubectl apply -f ../kubernetes/test-app.yaml
    ```
 
-2. **Prova de Càrrega Automàtica (Scale-Up)**:
-   Pots utilitzar l'script de bash inclòs per desencadenar un esdeveniment d'escala automàtic i observar com reacciona Karpenter ràpidament. L'script configurarà 15 rèpliques i començarà a observar els canvis:
-   ```bash
-   cd ..
-   chmod +x load-test.sh
-   ./load-test.sh
-   ```
-
-3. **Prova Manual Pas a Pas (Opcional)**:
-   Si vols dur a terme la prova manual per poder veure millor la reacció:
-   
-   - Escala un "load-generator" perquè hi hagi "pods pending" a l'espera de mes CPU i RAM:
+2. **Proves d'Autoscaling amb Karpenter**:
+   - Escala el "load-generator" per forçar la creació de nodes:
      ```bash
      kubectl scale deployment load-generator --replicas=15
      ```
-   
-   - Vigila la creació de nous nodes de EC2 per part de Karpenter:
+   - Vigila la creació de nous nodes EC2:
      ```bash
      kubectl get nodes -w
      ```
-   
-   - Analitza els logs del controlador de Karpenter per revisar les seves decisions d'aprovisionament:
+   - Revisa els logs de Karpenter per veure les decisions d'aprovisionament:
      ```bash
      kubectl logs -f -n karpenter -l app.kubernetes.io/name=karpenter
      ```
 
-4. **Prova de Consolidació (Scale-Down)**:
-   Per verificar que Karpenter elimina els nodes innecessaris per estalviar costos, redueix les rèpliques a 1:
+3. **Prova de Consolidació (Scale-Down)**:
+   Redueix les rèpliques per veure com Karpenter elimina nodes infrautilitzats:
    ```bash
    kubectl scale deployment load-generator --replicas=1
    ```
-   *Karpenter detectarà que els nodes estan infrautilitzats (consolidació), mourà els pods si cal, i terminarà les instàncies EC2 buides automàticament.*
+
+## Solució de Problemes Comuns
+
+### Error `context deadline exceeded` durant `terraform apply`
+Aquest error sol ocórrer en l'etapa de Helm per a Karpenter. Hem mitigat això amb `wait = false`. Si el recurs apareix com a "failed" a Terraform però el pod de Karpenter s'acaba aixecant correctament, pots tornar a executar `terraform apply` per sincronitzar l'estat.
+
+### Error `AccessDenied` en IAM
+Recorda que a AWS Academy no pots crear rols ni polítiques. El projecte està configurat per utilitzar `LabRole`. Si veus errors de permisos, assegura't que el fitxer `variables.tf` té l'ID del compte correcte o que el `LabRole` està disponible.
 
 ---
 *Creat com a part del repte d'infraestructura cloud per a AWS Academy.*
